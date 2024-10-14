@@ -17,6 +17,8 @@ integer::link_at_A
 integer::H_at_D
 integer::H_at_A
 
+integer,dimension(2)::neigh_C
+
 !Integers for counters
 integer::counter_at
 integer::counter_clash
@@ -32,14 +34,14 @@ double precision::normvec
 double precision::scalar
 
 !! Al-Kashi Theroem
-double precision::alpha,beta,gamma ! Angles
+double precision::alpha,beta,gamma              ! Angles
 double precision,dimension(3)::a,b,c            ! Distances
 double precision::angle,curr_angle
 double precision,dimension(3,3)::rot_mat
 
 !! Alignment stuff
 double precision,dimension(3)::axe_y,axe_z
-double precision,dimension(3)::vec
+double precision,dimension(3)::vec,axe,veca,vecb
 double precision,dimension(3)::shift
 
 !! OUT
@@ -55,6 +57,70 @@ call getarg(4,arg4) ; read(arg4,*) link_at_A
 !!! Read Coordinates
 call mol_read_xyz(donor)
 call mol_read_xyz(acceptor)
+
+
+axe_z=0
+axe_z(3)=1
+
+!!!!! REORIENTATION TO ALIGN THE PLANE !!!!!
+
+!!!! Loog at the link atom's neighbours and aligne the plane DONOR...
+    counter_at=0
+
+do i=1,donor%at
+    if (donor%atoms(i)%label.ne.'H'.AND.i.ne.link_at_D) then
+      if (normvec(donor%atoms(i)%coord(:) - donor%atoms(link_at_D)%coord(:)).lt.1.9) then
+      counter_at=counter_at+1
+        neigh_C(counter_at)=i
+      end if
+    end if
+end do
+!!! WORKS
+vec(:)=donor%atoms(link_at_D)%coord(:)
+do i=1,donor%at
+donor%atoms(i)%coord(:)=donor%atoms(i)%coord(:)-vec(:)
+end do
+veca=donor%atoms(neigh_C(1))%coord-donor%atoms(link_at_D)%coord
+vecb=donor%atoms(neigh_C(2))%coord-donor%atoms(link_at_D)%coord
+
+call vecto(veca,vecb,vec)
+
+angle=acos(scalar(vec,axe_z)/(normvec(vec)*normvec(axe_z)))
+call vecto(vec,axe_z,axe)
+call get_rot(rot_mat,axe,angle)
+do i=1,donor%at
+donor%atoms(i)%coord(:)=MATMUL(rot_mat,donor%atoms(i)%coord(:))
+end do
+
+!!!! Loog at the link atom's neighbours and aligne the plane ACCEPTOR...
+counter_at=0
+do i=1,acceptor%at
+    if (acceptor%atoms(i)%label.ne.'H'.AND.i.ne.link_at_A) then
+      if (normvec(acceptor%atoms(i)%coord(:) - acceptor%atoms(link_at_A)%coord(:)).lt.1.8) then
+      counter_at=counter_at+1
+        neigh_C(counter_at)=i
+      end if
+    end if
+end do
+!!! WORKS
+vec(:)=acceptor%atoms(link_at_A)%coord(:)
+do i=1,acceptor%at
+acceptor%atoms(i)%coord(:)=acceptor%atoms(i)%coord(:)-vec(:)
+end do
+
+veca=acceptor%atoms(neigh_C(1))%coord-acceptor%atoms(link_at_D)%coord
+vecb=acceptor%atoms(neigh_C(2))%coord-acceptor%atoms(link_at_D)%coord
+call vecto(veca,vecb,vec)
+
+angle=ACOS(scalar(vec,axe_z)/(normvec(vec)*normvec(axe_z)))
+call vecto(vec,axe_z,axe)
+call get_rot(rot_mat,axe,angle)
+do i=1,acceptor%at
+acceptor%atoms(i)%coord(:)=MATMUL(rot_mat,acceptor%atoms(i)%coord(:))
+end do
+!!!!! END - REORIENTATION TO ALIGN THE PLANE !!!!!
+
+
 
 !!!! Identification of H atoms bonded to link atom !!!!
 do i=1,donor%at
@@ -247,6 +313,7 @@ allocate(PICT_DA(i)%atoms(PICT_DA(i)%at))
       end if
     end do  
 
+!!!! Printing the isomer. !!!!
   write(file_out,'(a,i0,a)') 'out_',i,'.xyz'
   open(69,file=trim(adjustl(file_out)))
    write(69,'(i0)') acceptor%at + donor%at - 4
