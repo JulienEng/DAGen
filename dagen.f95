@@ -40,7 +40,8 @@ double precision::angle,curr_angle
 double precision,dimension(3,3)::rot_mat
 
 !! Alignment stuff
-double precision,dimension(3)::axe_y,axe_z
+double precision,dimension(3),parameter::axe_y=[0,1,0]
+double precision,dimension(3),parameter::axe_z=[0,0,1]
 double precision,dimension(3)::vec,axe,veca,vecb
 double precision,dimension(3)::shift
 
@@ -59,141 +60,27 @@ call mol_read_xyz(donor)
 call mol_read_xyz(acceptor)
 
 
-axe_z=0
-axe_z(3)=1
+call header()
+
+write(*,*)
+write(*,'(a,a)') 'Reading donor fragment from XYZ file: ', trim(adjustl(donor%file_xyz))
+write(*,'(a,a)') 'Reading acceptor fragment from XYZ file: ', trim(adjustl(acceptor%file_xyz))
+write(*,*)
+
 
 !!!!! REORIENTATION TO ALIGN THE PLANE !!!!!
 
-!!!! Loog at the link atom's neighbours and aligne the plane DONOR...
-    counter_at=0
+write(*,'(a)') 'Reorienting fragments ...'
+write(*,*)
 
-do i=1,donor%at
-    if (donor%atoms(i)%label.ne.'H'.AND.i.ne.link_at_D) then
-      if (normvec(donor%atoms(i)%coord(:) - donor%atoms(link_at_D)%coord(:)).lt.1.9) then
-      counter_at=counter_at+1
-        neigh_C(counter_at)=i
-      end if
-    end if
-end do
-!!! WORKS
-vec(:)=donor%atoms(link_at_D)%coord(:)
-do i=1,donor%at
-donor%atoms(i)%coord(:)=donor%atoms(i)%coord(:)-vec(:)
-end do
-veca=donor%atoms(neigh_C(1))%coord-donor%atoms(link_at_D)%coord
-vecb=donor%atoms(neigh_C(2))%coord-donor%atoms(link_at_D)%coord
+call align_plane(donor,link_at_D)
+call align_plane(acceptor,link_at_A)
 
-call vecto(veca,vecb,vec)
+call center_on_at(donor,link_at_D,-1.2*axe_y,axe_y,H_at_D)
+call center_on_at(acceptor,link_at_A,0.0*axe_y,-axe_y,H_at_A)
 
-angle=acos(scalar(vec,axe_z)/(normvec(vec)*normvec(axe_z)))
-call vecto(vec,axe_z,axe)
-call get_rot(rot_mat,axe,angle)
-do i=1,donor%at
-donor%atoms(i)%coord(:)=MATMUL(rot_mat,donor%atoms(i)%coord(:))
-end do
-
-!!!! Loog at the link atom's neighbours and aligne the plane ACCEPTOR...
-counter_at=0
-do i=1,acceptor%at
-    if (acceptor%atoms(i)%label.ne.'H'.AND.i.ne.link_at_A) then
-      if (normvec(acceptor%atoms(i)%coord(:) - acceptor%atoms(link_at_A)%coord(:)).lt.1.8) then
-      counter_at=counter_at+1
-        neigh_C(counter_at)=i
-      end if
-    end if
-end do
-!!! WORKS
-vec(:)=acceptor%atoms(link_at_A)%coord(:)
-do i=1,acceptor%at
-acceptor%atoms(i)%coord(:)=acceptor%atoms(i)%coord(:)-vec(:)
-end do
-
-veca=acceptor%atoms(neigh_C(1))%coord-acceptor%atoms(link_at_D)%coord
-vecb=acceptor%atoms(neigh_C(2))%coord-acceptor%atoms(link_at_D)%coord
-call vecto(veca,vecb,vec)
-
-angle=ACOS(scalar(vec,axe_z)/(normvec(vec)*normvec(axe_z)))
-call vecto(vec,axe_z,axe)
-call get_rot(rot_mat,axe,angle)
-do i=1,acceptor%at
-acceptor%atoms(i)%coord(:)=MATMUL(rot_mat,acceptor%atoms(i)%coord(:))
-end do
-!!!!! END - REORIENTATION TO ALIGN THE PLANE !!!!!
-
-
-
-!!!! Identification of H atoms bonded to link atom !!!!
-do i=1,donor%at
-  if (donor%atoms(i)%label.eq.'H') then
-    if (normvec(donor%atoms(i)%coord(:) - donor%atoms(link_at_D)%coord(:)).lt.1.2) then
-      H_at_D=i
-    end if
-  end if
-end do
-
-do i=1,acceptor%at
-  if (acceptor%atoms(i)%label.eq.'H') then
-    if (normvec(acceptor%atoms(i)%coord(:) - acceptor%atoms(link_at_A)%coord(:)).lt.1.2) then
-      H_at_A=i
-    end if
-  end if
-end do
-!!!! END - Identification of H atoms bonded to link atom !!!!
-
-Write(*,'(a,a,i0,a,a,i0)') 'Donor -link- bond: ',donor%atoms(link_at_D)%label,link_at_D,'-' ,&
-&donor%atoms(H_at_D)%label,H_at_D
-Write(*,'(a,a,i0,a,a,i0)') 'Acceptor -link- bond: ',acceptor%atoms(link_at_A)%label,link_at_A,'-' ,&
-&acceptor%atoms(H_at_A)%label,H_at_A
-
-!!!! Centre FRAGMENTS' link atom on 0 !!!!
-
-vec(:)=acceptor%atoms(link_at_A)%coord(:)
-do i=1,acceptor%at
-acceptor%atoms(i)%coord(:)=acceptor%atoms(i)%coord(:)-vec(:)
-end do
-vec(:)=donor%atoms(link_at_D)%coord(:)
-do i=1,donor%at
-donor%atoms(i)%coord(:)=donor%atoms(i)%coord(:)-vec(:)!
-end do
-!!!! END - Centre FRAGMENTS' link atom on 0 !!!!
-axe_z=0
-axe_z(3)=1
-!!!! Checking the orientation !!!!
-axe_y=0.0d0 ; axe_y(2)=1
-vec(:)=(donor%atoms(H_at_D)%coord(:) - donor%atoms(link_at_D)%coord(:)) ; vec(3)=0.0d0
-
-if ((scalar((vec/normvec(vec)),axe_y(:)).lt.0).OR.&
-&(ABS(scalar((vec/normvec(vec)),axe_y(:))-1).gt.1E-4)) then
-angle=acos(scalar(vec,axe_y)/(normvec(vec)*normvec(axe_y)))
-call get_rot(rot_mat,axe_z,angle)
-do i=1,donor%at
-  donor%atoms(i)%coord(:)=MATMUL(rot_mat,donor%atoms(i)%coord(:))
-end do
-end if
-
-axe_y=0.0d0 ; axe_y(2)=-1
-vec(:)=(acceptor%atoms(H_at_A)%coord(:) - acceptor%atoms(link_at_A)%coord(:)) ; vec(3)=0.0d0
-
-if ((scalar((vec/normvec(vec)),axe_y(:)).lt.0).OR.&
-& (ABS(scalar((vec/normvec(vec)),axe_y(:))-1).gt.1E-4)) then
- 
-angle=-acos(scalar(vec,axe_y)/(normvec(vec)*normvec(axe_y)))
-call get_rot(rot_mat,axe_z,angle)
-do i=1,acceptor%at
-  acceptor%atoms(i)%coord(:)=MATMUL(rot_mat,acceptor%atoms(i)%coord(:))
-end do
-end if
-!!!! END - Checking the orientation !!!!
-
-!! Adding Shift
-shift=0.0d0
-shift(2)=-1.2 ! Angstroem
-do i=1,donor%at
-donor%atoms(i)%coord(:)=donor%atoms(i)%coord(:)+shift(:)
-end do
-
-!! END - Adding Shift
-
+write(*,'(a,a,a,i0,a,a,a,i0,a)') 'Making D-A bridge between atom D[',trim(donor%atoms(link_at_D)%label),'(',link_at_D,&
+&')]-A[',trim(acceptor%atoms(link_at_A)%label),'(',link_at_A,')].'
 
 
 !!!! PRINTING THE D-A molecule !!!!
@@ -256,7 +143,7 @@ do i=1,donor%at
 end do
 !!!! END - Checking for Clashes !!!!
 
-write(*,*) 'Number of pairs of close lying H atoms: ', counter_clash
+Write(*,'(a,i0,a)') 'Found ',counter_clash,' possible isomers.'
 
 !!!! Check for Atom bonded to the Clashing H !!!!
 allocate(C_clash(counter_clash,2))
@@ -277,7 +164,13 @@ do i=1,counter_clash
       end if
     end if
   end do
+
+write(*,'(a,a,a,i0,a,a,a,i0,a)') 'Making a second D-A bond between atom D[',trim(donor%atoms(C_clash(i,1))%label),'(',C_clash(i,1),&
+&')]-A[',trim(acceptor%atoms(C_clash(i,2))%label),'(',C_clash(i,2),')].'
 end do
+
+
+
 !!!! END - Check for Atom bonded to the Clashing H !!!!
 
 allocate(PICT_DA(counter_clash))
@@ -312,6 +205,8 @@ allocate(PICT_DA(i)%atoms(PICT_DA(i)%at))
 
       end if
     end do  
+  !  write(*,*) 'AM I DONE HERE?'
+
 
 !!!! Printing the isomer. !!!!
   write(file_out,'(a,i0,a)') 'out_',i,'.xyz'
@@ -326,5 +221,5 @@ allocate(PICT_DA(i)%atoms(PICT_DA(i)%at))
 end do
 !!!! END - Al-Kashi To tilt the acceptor. !!!!
 
-
+call endoftimes()
 end program
